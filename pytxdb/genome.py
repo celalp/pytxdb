@@ -6,15 +6,7 @@ import pysam
 import sqlalchemy as sql
 from Bio.Seq import Seq
 from sqlalchemy.orm import Session
-
-
-def check_results(res):
-    if len(res) == 0:
-        raise ValueError("Did not find any features with those names, "
-                         "plasae check the names you provided")
-    else:
-        return res
-
+from utils import check_results
 
 class Genome:
     def __init__(self, db, fasta=None, mart=None):
@@ -42,8 +34,6 @@ class Genome:
         :param regex: is this a regex default False
         :return: returns a list of strings (ens ids)
         """
-        gene_table = sql.Table("genes", self.metadata, autoload=True, autoload_with=self.db)
-        annot_table = sql.Table("gene_annot", self.metadata, autoload=True, autoload_with=self.db)
 
         if return_fields:
             print("Available fields are: name, description, biotype, hgnc, ucsc, wikigene, synonyms")

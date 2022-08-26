@@ -1,1 +1,5 @@
 .idea
+.ipynb_checkpoints
+pytxdb/__pycache__/
+pytxdb/.pybiomart.sqlite
+Untitled.ipynb
