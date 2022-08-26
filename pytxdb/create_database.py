@@ -1,6 +1,5 @@
 import argparse as arg
 from datetime import datetime
-from database import *
 import pybiomart as biomart
 from sqlalchemy import create_engine
 import pyranges
@@ -202,6 +201,8 @@ if __name__=="__main__":
                              for col, type, ix in zip(annots, types, idx)))
 
         annots_table.create()
+
+
         gene_annotations = dataset.query(attributes=annots)
         cols=gene_annotations.columns
         new_cols={}
