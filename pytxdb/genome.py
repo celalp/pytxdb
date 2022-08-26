@@ -6,7 +6,7 @@ import pysam
 import sqlalchemy as sql
 from Bio.Seq import Seq
 from sqlalchemy.orm import Session
-from utils import check_results
+from .utils import check_results
 
 class Genome:
     def __init__(self, db, fasta=None, mart=None):
@@ -437,7 +437,6 @@ class Genome:
         if strand != gr.Strand:
             print("region provided and the transcript are on different strands")
 
-        length = sum(coding_regions.End - coding_regions.Start) / 3
         five = coding_regions.Start.min()
         three = coding_regions.End.max()
 
