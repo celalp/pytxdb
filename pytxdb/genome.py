@@ -431,74 +431,120 @@ class Genome:
         if feature_name not in features:
             raise ValueError("features can be one of the following: {}".format(",".join(features)))
 
+        #pranges returns strand specific
         coding_regions = self.cds(names=[tx], level="transcript", df=False)
+        coding_regions.exon_rank = [float(rank) for rank in coding_regions.exon_rank]
+        coding_regions.len = coding_regions.End - coding_regions.Start
+
         strand = coding_regions.Strand.unique()[0]
 
-        if strand != gr.Strand:
+        if strand != gr.Strand[0]:
             print("region provided and the transcript are on different strands")
+            return None
 
-        five = coding_regions.Start.min()
-        three = coding_regions.End.max()
+        coding_regions.relative_end = np.cumsum(coding_regions.len)
+        coding_regions.relative_start = pd.concat([pd.Series([1]), coding_regions.relative_end[:-1] + 1])
 
-        gr_start = gr
+        gr_start = gr.copy()
         gr_start.End = gr.Start
 
-        gr_end = gr
+        gr_end = gr.copy()
         gr_end.Start = gr.End
 
-        closest_start = coding_regions.nearest(gr_start)
+        closest_start = gr_start.nearest(coding_regions)
 
-        # find the starting location on the genome based on coding sequences
-        if closest_start.Distance == 0:  # inside a cds
-            start_location = gr.Start
-        elif closest_start.Start - gr.Start < 0:  # 5' of the closest cds so take the whole cds
-            start_location = closest_start.Start
-        elif closest_start.Start - gr.Start > 0:  # 3' of the closest cds so need to take the next cds
-            start_exon_rank = closest_start.exon_rank + 1
-            if start_exon_rank > coding_regions.exon_rank.max():  # start at 3' utr so no protein
-                print("gr starts at a 3' utr there is no protein sequence overlap")
+        if int(closest_start.End_b) - int(gr.Start) <=0: # 3' of the closest cds need to get the next one
+            if strand == "+":
+                start_exon_rank = int(closest_start.exon_rank) + 1  # get the next one 3' of the exon
+                if start_exon_rank > coding_regions.exon_rank.max():  # start at 3' utr so no protein
+                    print("gr starts at a 3' utr there is no protein sequence overlap")
+                    return None
+                else:
+                    start_location = int(coding_regions[coding_regions.exon_rank == start_exon_rank].Start)
             else:
-                start_location = coding_regions[coding_regions.exon_rank == start_exon_rank].Start
+                start_exon_rank = int(closest_start.exon_rank) - 1  # because exon rank decreases as we go 3'
+                if start_exon_rank < coding_regions.exon_rank.min():  # start at 5' utr so no protein
+                    print("gr ends at a 5' utr there is no protein sequence overlap")
+                    return None
+                else:
+                    start_location = int(coding_regions[coding_regions.exon_rank == start_exon_rank].Start)
+        elif int(closest_start.Start_b) - int(gr.Start) >= 0: # 5' of the closest cds get the whole thing
+            start_location = int(closest_start.Start_b)
+            start_exon_rank = int(closest_start.exon_rank)
+        else: #inside the cds
+            start_exon_rank = int(closest_start.exon_rank)
+            start_location = int(gr.Start)  # because inside the exon
+
 
         # repeat for the end location
-        closest_end = coding_regions.nearest(gr_end)
+        closest_end = gr_end.nearest(coding_regions)
 
-        if closest_end.Distance == 0:  # inside a cds
-            end_location = gr.End
-        elif closest_end.End - gr.Start > 0:  # 3' of the closest cds so take the whole cds
-            end_location = closest_start.End
-        elif closest_end.Start - gr.Start < 0:  # 5' of the closest cds so need to take the prevoius cds
-            end_exon_rank = closest_end.exon_rank - 1
-            if end_exon_rank < coding_regions.exon_rank.min():  # end at 5' utr so no protein
-                print("gr ends at a 5' utr there is no protein sequence overlap")
+        if int(closest_end.Start_b) - int(gr.End) >= 0: #skipping a cds and the closest one is the next cds
+            if strand == "+":
+                end_exon_rank = int(closest_end.exon_rank) - 1
+                if end_exon_rank < coding_regions.exon_rank.min():  # end at 5' utr so no protein
+                    print("gr ends at a 5' utr there is no protein sequence overlap")
+                    return None
+                else:
+                    end_location = int(coding_regions[coding_regions.exon_rank == end_exon_rank].End)
             else:
-                end_location = coding_regions[coding_regions.exon_rank == end_exon_rank].End
+                end_exon_rank = int(closest_end.exon_rank) + 1
+                if end_exon_rank > coding_regions.exon_rank.max():  # end at 5' utr so no protein
+                    print("gr ends at a 5' utr there is no protein sequence overlap")
+                    return None
+                else:
+                    end_location = int(coding_regions[coding_regions.exon_rank == end_exon_rank].End)
+        elif int(closest_end.End_b) - int(gr.End) <= 0: # closest cds is the one we are skipping
+            end_exon_rank = int(closest_end.exon_rank)
+            end_location = int(closest_end.End_b)
+        else: #inside the cds
+            end_exon_rank = int(closest_end.exon_rank)
+            end_location = int(gr.End)
+
+
+
 
         # find aa location here strand matters
+        start = coding_regions[coding_regions.exon_rank == start_exon_rank]
+        end = coding_regions[coding_regions.exon_rank == end_exon_rank]
         if strand == "+":
-            start_aa = (start_location - five) / 3
-            end_aa = (end_location - five) / 3
+            relative_start = start_location - start.Start + start.relative_start
+            relative_end= end_location-end.Start+end.relative_start
         else:
-            start_aa = (three - start_location) / 3
-            end_aa = (three - end_location) / 3
+            relative_end = start.End - start_location + start.relative_start
+            relative_start=end.End-end_location+end.relative_start
+
+        start_aa = float(relative_start / 3)
+        end_aa = float(relative_end / 3)
+
+        #edge case, if they are in the same intron
+        if (start_aa > end_aa) and (start_exon_rank==end_exon_rank):
+            print("No affected domains found for {}".format(tx))
+            return None
 
         columns = [feature_name, feature_name + "_start", feature_name + "_end"]
         domains = self.mart.query(attributes=columns,
                                   filters={"link_ensembl_transcript_stable_id": tx})
-        domains = domains.sort_values(by=domains.columns[1])
+        if pd.isnull(domains.iloc[0, 0]):
+            print("No domains found with {} in {}".format(feature_name, tx))
+            return None
+        else:
+            domains = domains.sort_values(by=domains.columns[1])
+            starts = domains.iloc[:, 1].to_list()
+            ends = domains.iloc[:, 2].to_list()
 
-        starts = domains.iloc[:, 1].to_list()
-        ends = domains.iloc[:, 2].to_list()
+            intervals = []
+            for i in range(len(starts)):
+                intervals.append(pd.Interval(starts[i], ends[i], closed="both"))
 
-        intervals = []
-        for i in range(len(starts)):
-            intervals.append(pd.Interval(starts[i], ends[i], closed="both"))
-
-        affected = pd.Interval(start_aa, end_aa, closed="both")
-        overlaps = [interval for interval in intervals if interval.overlaps(affected)]
-        start = min([interval.left for interval in overlaps])
-        end = max([interval.right for interval in overlaps])
-        start_idx = domains.index[domains.iloc[:, 1] == start]
-        end_idx = domains.index[domains.iloc[:, 2] == end]
-
-        return domains.iloc[start_idx[0]:end_idx[0], :]
+            affected = pd.Interval(start_aa, end_aa, closed="both")
+            overlaps = [interval for interval in intervals if interval.overlaps(affected)]
+            if len(overlaps) > 0:
+                start = min([interval.left for interval in overlaps])
+                end = max([interval.right for interval in overlaps])
+                start_idx = domains.index[domains.iloc[:, 1] == start]
+                end_idx = domains.index[domains.iloc[:, 2] == end]+1
+                return domains.iloc[start_idx[0]:end_idx[0], :]
+            else:
+                print("No affected domains found for {}".format(tx))
+                return None
