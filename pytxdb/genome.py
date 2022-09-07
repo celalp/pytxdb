@@ -8,6 +8,7 @@ from Bio.Seq import Seq
 from sqlalchemy.orm import Session
 from .utils import check_results
 
+
 class Genome:
     def __init__(self, db, fasta=None, mart=None):
         """
@@ -413,7 +414,7 @@ class Genome:
 
         return seqs
 
-    def domains(self, gr, feature_name, tx):
+    def domains(self, gr, feature_name, tx, quiet=True):
         """
        if a given genomic ranges falls into a gene (or multiple genes) finds the regions that are covered and extracts
        proteins domains that are covered in that region
@@ -431,7 +432,7 @@ class Genome:
         if feature_name not in features:
             raise ValueError("features can be one of the following: {}".format(",".join(features)))
 
-        #pranges returns strand specific
+        # pranges returns strand specific
         coding_regions = self.cds(names=[tx], level="transcript", df=False)
         coding_regions.exon_rank = [float(rank) for rank in coding_regions.exon_rank]
         coding_regions.len = coding_regions.End - coding_regions.Start
@@ -439,8 +440,7 @@ class Genome:
         strand = coding_regions.Strand.unique()[0]
 
         if strand != gr.Strand[0]:
-            print("region provided and the transcript are on different strands")
-            return None
+            raise ValueError("region provided and the transcript are on different strands")
 
         coding_regions.relative_end = np.cumsum(coding_regions.len)
         coding_regions.relative_start = pd.concat([pd.Series([1]), coding_regions.relative_end[:-1] + 1])
@@ -452,99 +452,118 @@ class Genome:
         gr_end.Start = gr.End
 
         closest_start = gr_start.nearest(coding_regions)
+        #intialize variables here and they will be overwritten later
+        message=None
+        start_aa=None
+        end_aa=None
+        domains=None
 
-        if int(closest_start.End_b) - int(gr.Start) <=0: # 3' of the closest cds need to get the next one
+        if int(closest_start.End_b) - int(gr.Start) <= 0:  # 3' of the closest cds need to get the next one
             if strand == "+":
                 start_exon_rank = int(closest_start.exon_rank) + 1  # get the next one 3' of the exon
                 if start_exon_rank > coding_regions.exon_rank.max():  # start at 3' utr so no protein
-                    print("gr starts at a 3' utr there is no protein sequence overlap")
-                    return None
+                    message="gr starts at a 3' utr there is no protein sequence overlap"
+                    domains = None
+                    start_aa = 0
+                    end_aa = 0
                 else:
                     start_location = int(coding_regions[coding_regions.exon_rank == start_exon_rank].Start)
             else:
                 start_exon_rank = int(closest_start.exon_rank) - 1  # because exon rank decreases as we go 3'
                 if start_exon_rank < coding_regions.exon_rank.min():  # start at 5' utr so no protein
-                    print("gr ends at a 5' utr there is no protein sequence overlap")
-                    return None
+                    message="gr ends at a 5' utr there is no protein sequence overlap"
+                    domains = None
+                    start_aa = 0
+                    end_aa = 0
                 else:
                     start_location = int(coding_regions[coding_regions.exon_rank == start_exon_rank].Start)
-        elif int(closest_start.Start_b) - int(gr.Start) >= 0: # 5' of the closest cds get the whole thing
+        elif int(closest_start.Start_b) - int(gr.Start) >= 0:  # 5' of the closest cds get the whole thing
             start_location = int(closest_start.Start_b)
             start_exon_rank = int(closest_start.exon_rank)
-        else: #inside the cds
+        else:  # inside the cds
             start_exon_rank = int(closest_start.exon_rank)
             start_location = int(gr.Start)  # because inside the exon
-
 
         # repeat for the end location
         closest_end = gr_end.nearest(coding_regions)
 
-        if int(closest_end.Start_b) - int(gr.End) >= 0: #skipping a cds and the closest one is the next cds
+        if int(closest_end.Start_b) - int(gr.End) >= 0:  # skipping a cds and the closest one is the next cds
             if strand == "+":
                 end_exon_rank = int(closest_end.exon_rank) - 1
                 if end_exon_rank < coding_regions.exon_rank.min():  # end at 5' utr so no protein
-                    print("gr ends at a 5' utr there is no protein sequence overlap")
-                    return None
+                    message="gr ends at a 5' utr there is no protein sequence overlap"
+                    domains = None
+                    start_aa = 0
+                    end_aa = 0
                 else:
                     end_location = int(coding_regions[coding_regions.exon_rank == end_exon_rank].End)
             else:
                 end_exon_rank = int(closest_end.exon_rank) + 1
                 if end_exon_rank > coding_regions.exon_rank.max():  # end at 5' utr so no protein
-                    print("gr ends at a 5' utr there is no protein sequence overlap")
-                    return None
+                    message="gr ends at a 5' utr there is no protein sequence overlap"
+                    domains = None
+                    start_aa = 0
+                    end_aa = 0
                 else:
                     end_location = int(coding_regions[coding_regions.exon_rank == end_exon_rank].End)
-        elif int(closest_end.End_b) - int(gr.End) <= 0: # closest cds is the one we are skipping
+        elif int(closest_end.End_b) - int(gr.End) <= 0:  # closest cds is the one we are skipping
             end_exon_rank = int(closest_end.exon_rank)
             end_location = int(closest_end.End_b)
-        else: #inside the cds
+        else:  # inside the cds
             end_exon_rank = int(closest_end.exon_rank)
             end_location = int(gr.End)
 
-
-
+        if start_aa==0 and end_aa==0 and domains is None:
+            if not quiet:
+                print(message)
+            return domains, start_aa, end_aa
 
         # find aa location here strand matters
         start = coding_regions[coding_regions.exon_rank == start_exon_rank]
         end = coding_regions[coding_regions.exon_rank == end_exon_rank]
         if strand == "+":
             relative_start = start_location - start.Start + start.relative_start
-            relative_end= end_location-end.Start+end.relative_start
+            relative_end = end_location - end.Start + end.relative_start
+            start_aa = float(relative_start / 3)
+            end_aa = float(relative_end / 3)
         else:
             relative_end = start.End - start_location + start.relative_start
-            relative_start=end.End-end_location+end.relative_start
+            relative_start = end.End - end_location + end.relative_start
+            start_aa = float(relative_start / 3)
+            end_aa = float(relative_end / 3)
 
-        start_aa = float(relative_start / 3)
-        end_aa = float(relative_end / 3)
-
-        #edge case, if they are in the same intron
-        if (start_aa > end_aa) and (start_exon_rank==end_exon_rank):
-            print("No affected domains found for {}".format(tx))
-            return None
-
-        columns = [feature_name, feature_name + "_start", feature_name + "_end"]
-        domains = self.mart.query(attributes=columns,
-                                  filters={"link_ensembl_transcript_stable_id": tx})
-        if pd.isnull(domains.iloc[0, 0]):
-            print("No domains found with {} in {}".format(feature_name, tx))
-            return None
+        # edge case, if they are in the same intron
+        if (start_aa > end_aa) and (start_exon_rank == end_exon_rank):
+            message="No affected domains found for {}".format(tx)
+            domains=None
         else:
-            domains = domains.sort_values(by=domains.columns[1])
-            starts = domains.iloc[:, 1].to_list()
-            ends = domains.iloc[:, 2].to_list()
-
-            intervals = []
-            for i in range(len(starts)):
-                intervals.append(pd.Interval(starts[i], ends[i], closed="both"))
-
-            affected = pd.Interval(start_aa, end_aa, closed="both")
-            overlaps = [interval for interval in intervals if interval.overlaps(affected)]
-            if len(overlaps) > 0:
-                start = min([interval.left for interval in overlaps])
-                end = max([interval.right for interval in overlaps])
-                start_idx = domains.index[domains.iloc[:, 1] == start]
-                end_idx = domains.index[domains.iloc[:, 2] == end]+1
-                return domains.iloc[start_idx[0]:end_idx[0], :]
+            columns = [feature_name, feature_name + "_start", feature_name + "_end"]
+            domains = self.mart.query(attributes=columns,
+                                      filters={"link_ensembl_transcript_stable_id": tx})
+            if pd.isnull(domains.iloc[0, 0]):
+                message="No domains found with {} in {}".format(feature_name, tx)
+                domains=None
             else:
-                print("No affected domains found for {}".format(tx))
-                return None
+                domains = domains.sort_values(by=domains.columns[1])
+                starts = domains.iloc[:, 1].to_list()
+                ends = domains.iloc[:, 2].to_list()
+
+                intervals = []
+                for i in range(len(starts)):
+                    intervals.append(pd.Interval(starts[i], ends[i], closed="both"))
+
+                affected = pd.Interval(start_aa, end_aa, closed="both")
+                overlaps = [interval for interval in intervals if interval.overlaps(affected)]
+                if len(overlaps) > 0:
+                    start = min([interval.left for interval in overlaps])
+                    end = max([interval.right for interval in overlaps])
+                    start_idx = domains.index[domains.iloc[:, 1] == start]
+                    end_idx = domains.index[domains.iloc[:, 2] == end] + 1
+                    domains= domains.iloc[start_idx[0]:end_idx[0], :]
+                else:
+                    message="No affected domains found for {}".format(tx)
+                    domains=None
+
+        if not quiet and message is not None:
+            print(message)
+        return domains, start_aa, end_aa
