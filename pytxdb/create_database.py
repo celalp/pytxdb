@@ -1,3 +1,5 @@
+#! python3.9
+
 import argparse as arg
 import os
 from datetime import datetime
@@ -7,8 +9,8 @@ import pybiomart as biomart
 import pyranges
 import yaml
 
-import utils
-from database import *
+import pytxdb.utils as utils
+from pytxdb.database import *
 
 if __name__ == "__main__":
     parser = arg.ArgumentParser(description='create a txdb-esque database, currently only creates a sqlite database')

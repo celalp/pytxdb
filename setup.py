@@ -9,6 +9,6 @@ setup(
     packages=find_packages(),
     install_requires=["pandas","pyranges","pysam","biopython","sqlalchemy","numpy","pybiomart"],
     zip_safe=False,
-    scripts=["pyxtdb/create_database.py"],
+    scripts=["pytxdb/create_database.py"],
     include_package_data=True
 )
