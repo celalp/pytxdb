@@ -6,8 +6,10 @@ import pysam
 import sqlalchemy as sql
 from Bio.Seq import Seq
 from sqlalchemy.orm import Session
-from .utils import check_results
+from utils import check_results
 
+#TODO need to refactor and account for the gene moved gene and transcript annotations
+#TODO need to be able to handle non file sequences but how?
 
 class Genome:
     def __init__(self, db, fasta=None, mart=None):
@@ -27,44 +29,34 @@ class Genome:
         self.metadata = sql.MetaData(self.db)
         self.metadata.reflect(bind=self.db)
 
-    def search_gene(self, term, where=None, regex=False, return_fields=False):
+    def search(self, term, where=None, regex=False, return_fields=False, gene=True):
         """
         searches for ensembl id based on some information like gene name can use regexes
         :param term: what to search for
         :param where: optional search field
         :param regex: is this a regex default False
+        :param gene: search gene annotations table othewise transcript annotations
         :return: returns a list of strings (ens ids)
         """
+        if gene:
+            annots_table = sql.Table("gene_annotations", self.metadata, autoload=True, autoload_with=self.db)
+        else:
+            annots_table = sql.Table("gene_annotations", self.metadata, autoload=True, autoload_with=self.db)
 
         if return_fields:
-            print("Available fields are: name, description, biotype, hgnc, ucsc, wikigene, synonyms")
+            print("Available fields are: {}".format(",".join(annots_table.columns.keys())))
         else:
 
-            gene_table = sql.Table("genes", self.metadata, autoload=True, autoload_with=self.db)
-            annot_table = sql.Table("gene_annot", self.metadata, autoload=True, autoload_with=self.db)
+            query=sql.select(annots_table)
+            annots_table=self.session.execute(query).fetchall()
+            annots=pd.DataFrame(annots)
 
-            query1 = sql.select(gene_table.c.id, gene_table.c.name, gene_table.c.description,
-                                gene_table.c.biotype)
+            annots.columns=self.session.execute(query).keys()
 
-            res1 = self.session.execute(query1).fetchall()
-            df1 = pd.DataFrame(res1)
-            columns = list(self.session.execute(query1).keys())
-            df1.columns = columns
-
-            query2 = sql.select(annot_table.c.ens_id, annot_table.c.hgnc, annot_table.c.ucsc,
-                                annot_table.c.wikigene, annot_table.c.synonyms)
-            res2 = self.session.execute(query2).fetchall()
-            df2 = pd.DataFrame(res2)
-            columns = list(self.session.execute(query2).keys())
-            df2.columns = columns
-
-            merged = df1.merge(df2, how="left", right_on="ens_id", left_on="id"). \
-                drop(columns="ens_id")
-
-            mask_array = np.zeros_like(merged, dtype=bool)
+            mask_array = np.zeros_like(annots, dtype=bool)
             if where is None:
-                for i in range(len(merged.columns)):
-                    mask_array[:, i] = merged.iloc[:, i]. \
+                for i in range(len(annots.columns)):
+                    mask_array[:, i] = annots.iloc[:, i]. \
                         str.contains(term, case=False, regex=regex, na=False)
                 mask = np.sum(mask_array, axis=1) > 0
 
@@ -74,7 +66,7 @@ class Genome:
             genes = merged["id"][mask].drop_duplicates()
             return genes
 
-    def genes(self, names=None, df=False, additional_features=True):
+    def genes(self, names=None, df=False):
         """
         get gene coordinates
         :param names: list of ens ids if none everything
@@ -101,14 +93,10 @@ class Genome:
                                             starts=dat.iloc[:, 2],
                                             ends=dat.iloc[:, 3],
                                             strands=dat.iloc[:, 4])
-            if additional_features:
-                gr.id = dat["id"]
-                gr.name = dat["name"]
-                gr.description = dat["description"]
-                gr.biotype = dat["biotype"]
+            gr.id = dat["id"]
             return gr
 
-    def transcripts(self, names=None, df=False, additional_features=True):
+    def transcripts(self, names=None, df=False):
         """
         return transcripts
         :param names: list of ens ids if none everything
@@ -138,10 +126,7 @@ class Genome:
                                             starts=dat.iloc[:, 2],
                                             ends=dat.iloc[:, 3],
                                             strands=dat.iloc[:, 7])
-            if additional_features:
-                gr.tx_id = dat.id
-                gr.gene_id = dat.gene
-                gr.biotype = dat.biotype
+            gr.tx_id = dat.id
             return gr
 
     def exons(self, names=None, level="transcript", df=False, additional_features=True):

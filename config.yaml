@@ -1,0 +1,68 @@
+
+output:
+  name: mygenome.db
+  type: sqlite
+  env:
+
+dataset: hsapiens_gene_ensembl
+host: http://grch37.ensembl.org
+error: ignore
+
+# these can be an arbitrary # of columns but keep in mind if you want to download the
+# whole ensembl database there is an easier way, just select the ones you think you will need
+# you should keep the first columns as they describe the relationship between the gene/transcript
+# coordinate table and the annotation table
+gene_annotations:
+  ensembl_gene_id: #this is mandatory
+     type: fk
+     index: true
+     fk:
+       table: genes
+       column: id
+  external_gene_name:
+     type: str
+     index: false
+  description:
+    type: str
+    index: false
+  gene_biotype:
+    type: str
+    index: false
+  hgnc_id:
+    type: str
+    index: false
+  hgnc_symbol:
+    type: str
+    index: false
+  ucsc:
+    type: str
+    index: false
+  wikigene_name:
+    type: str
+    index: false
+  wikigene_description:
+    type: str
+    index: false
+  external_synonym:
+    type: str
+    index: false
+
+
+transcript_annotations:
+  ensembl_transcript_id: #this is mandatory
+    type: fk
+    index: true
+    fk:
+      table: transcripts
+      column: id
+  transcript_biotype:
+    type: str
+    index: false
+  external_transcript_name:
+    type: str
+    index: false
+  transcript_is_cannonical:
+    type: str
+    index: false
+
+

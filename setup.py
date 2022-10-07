@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='pytxdb',
@@ -6,8 +6,9 @@ setup(
     description="Python module for creating a sqlite database and searching for genomes inspired by R's GenomicFeatures and txdb",
     author='Alper Celik',
     author_email='alper.celik@sickkids.ca',
-    packages=['pytxdb'],
+    packages=find_packages(),
     install_requires=["pandas","pyranges","pysam","biopython","sqlalchemy","numpy","pybiomart"],
     zip_safe=False,
+    scripts=["pyxtdb/create_database.py"],
     include_package_data=True
 )
