@@ -77,19 +77,27 @@ def dict_to_table(dict, tablename, meta):
     return table
 
 
-def dict_to_engine(params, **kwargs):
-    #TODO support postgres, mariadb and mysql
+def dict_to_engine(params, username=None, pwd=None, host=None, port=None):
     """
     create a database connection based on the yaml description
     :param dict: the output section of the config yaml
     :param kwargs: if type is not sqlite in this order username, password, host, port
     :return: a sqlalchemy engine
     """
-    if params["type"] == "sqlite":
+    dbtype=params["type"]
+    if dbtype == "sqlite":
         dbstring = "sqlite:///{}".format(params["name"])
+    elif dbtype == "postgresql":
+        dbstring = "postgresql://{}:{}@{}:{}/{}".format("postgresql", username,
+                                                        pwd, host, port, params["name"])
+    elif dbtype == "mariadb":
+        dbstring = "mariadb+mariadbconnector:://{}:{}@{}:{}/{}".format("postgresql", username,
+                                                        pwd, host, port, params["name"])
+    elif dbtype == "mysql":
+        dbstring = "mysql+mysqlconnector://{}:{}@{}:{}/{}".format("postgresql", username,
+                                                        pwd, host, port, params["name"])
     else:
-        raise NotImplementedError("currently only sqlite is supported")
-        # dbstring = "{}://{}:{}@{}:{}/{}".format(kwargs, params["name"])
+        raise NotImplementedError("There is no current support for {}".format(dbtype))
     engine = create_engine(dbstring)
     return engine
 

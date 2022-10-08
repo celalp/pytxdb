@@ -7,7 +7,8 @@ setup(
     author='Alper Celik',
     author_email='alper.celik@sickkids.ca',
     packages=find_packages(),
-    install_requires=["pandas","pyranges","pysam","biopython","sqlalchemy","numpy","pybiomart"],
+    install_requires=["pandas", "pyranges", "pysam", "biopython", "sqlalchemy", "numpy", "pybiomart",
+                      "mysql-connector-python", "mariadb", "psycopg2", "python-dotenv"],
     zip_safe=False,
     scripts=["pytxdb/create_database.py"],
     include_package_data=True

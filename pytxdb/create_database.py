@@ -1,5 +1,5 @@
 #! python3.9
-
+from dotenv import dotenv_values
 import argparse as arg
 import os
 from datetime import datetime
@@ -12,10 +12,13 @@ import yaml
 import pytxdb.utils as utils
 from pytxdb.database import *
 
+
 if __name__ == "__main__":
     parser = arg.ArgumentParser(description='create a txdb-esque database, currently only creates a sqlite database')
     parser.add_argument('-g', '--gtf', help="gtf file", type=str, action="store")
     parser.add_argument('-y', '--yaml', help="config yaml file", type=str, action="store")
+    parser.add_argument('-e', '--env', help=".env file for connecting to db servers",
+                        type=str, action="store", default=None)
     args = parser.parse_args()
 
     if args.yaml is None:
@@ -35,7 +38,21 @@ if __name__ == "__main__":
 
     print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Creating database " +
           params["output"]["name"])
-    engine = utils.dict_to_engine(params["output"])
+    if params["output"]["type"]=="sqlite":
+        engine = utils.dict_to_engine(params["output"])
+    else:
+        if args.env is None:
+            raise ValueError("did not specify an env file")
+        if not os.path.isfile(args.gtf):
+            raise FileNotFoundError("could not find {}".format(args.env))
+
+        env = dotenv_values(arg.env)
+        engine = utils.dict_to_engine(params["output"],
+                                      username=env["username"],
+                                      pwd=env["password"],
+                                      host=env["host"],
+                                      port=env["port"])
+
     genome_meta = MetaData(bind=engine)
     GenomeBase.metadata.create_all(engine)
 

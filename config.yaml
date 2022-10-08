@@ -2,7 +2,7 @@
 output:
   name: mygenome.db
   type: sqlite
-  env:
+  env: .env
 
 dataset: hsapiens_gene_ensembl
 host: http://grch37.ensembl.org
