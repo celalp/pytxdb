@@ -66,10 +66,11 @@ class Genome:
             genes = merged["id"][mask].drop_duplicates()
             return genes
 
-    def genes(self, names=None, df=False):
+    def genes(self, names=None, df=False, add_annotations=False):
         """
         get gene coordinates
-        :param names: list of ens ids if none everything
+        :param names: list of ens ids if none everything, this needs to be an iterable even
+        if only one thing is requested
         :param df: return a dataframe or pyranges
         :param additional_features: add additional features to the search results
         :return: returns a dataframe or pyranges object
@@ -79,6 +80,13 @@ class Genome:
             query = sql.select(table)
         else:
             query = sql.select(table).where(table.c.id.in_(names))
+
+        if add_annotations:
+            annot_table=sql.Table("gene_annotations", self.metadata,
+                                  autoload=True, autoload_with=self.db)
+            query.join(annot_table, table.c.id == annot_table.c.ensembl_gene_id).\
+                add_columns(annot_table)
+
         results = check_results(self.session.execute(query).fetchall())
 
         columns = list(self.session.execute(query).keys())
@@ -96,12 +104,13 @@ class Genome:
             gr.id = dat["id"]
             return gr
 
-    def transcripts(self, names=None, df=False):
+    def transcripts(self, names=None, df=False, add_annotations=False):
         """
         return transcripts
-        :param names: list of ens ids if none everything
+        :param names: list of ens ids if none everything, this needs to be an iterable even if
+        there is only one transcript requested
         :param df: return a df otherwise pyranges
-        :param additional_features: add additional features to the search results
+        :param add_annotations: join with transcript annotations table
         :return: a df or pyranges
         """
         tx_table = sql.Table("transcripts", self.metadata, autoload=True, autoload_with=self.db)
@@ -113,7 +122,13 @@ class Genome:
             join(subq, tx_table.c.gene == subq.c.id)
 
         if names is not None:
-            query = query.where(tx_table.c.gene.in_(names))
+            query = query.where(tx_table.c.id.in_(names))
+
+        if add_annotations:
+            annot_table=sql.Table("transcript_annotations", self.metadata,
+                                  autoload=True, autoload_with=self.db)
+            query.join(annot_table, tx_table.c.id == annot_table.c.ensembl_transcript_id).\
+                add_columns(annot_table)
 
         results = check_results(self.session.execute(query).fetchall())
         dat = pd.DataFrame(results)
