@@ -88,14 +88,11 @@ def dict_to_engine(params, username=None, pwd=None, host=None, port=None):
     if dbtype == "sqlite":
         dbstring = "sqlite:///{}".format(params["name"])
     elif dbtype == "postgresql":
-        dbstring = "postgresql://{}:{}@{}:{}/{}".format("postgresql", username,
-                                                        pwd, host, port, params["name"])
+        dbstring = "postgresql://{}:{}@{}:{}/{}".format(username, pwd, host, port, params["name"])
     elif dbtype == "mariadb":
-        dbstring = "mariadb+mariadbconnector:://{}:{}@{}:{}/{}".format("postgresql", username,
-                                                        pwd, host, port, params["name"])
+        dbstring = "mariadb+mariadbconnector:://{}:{}@{}:{}/{}".format(username, pwd, host, port, params["name"])
     elif dbtype == "mysql":
-        dbstring = "mysql+mysqlconnector://{}:{}@{}:{}/{}".format("postgresql", username,
-                                                        pwd, host, port, params["name"])
+        dbstring = "mysql+mysqlconnector://{}:{}@{}:{}/{}".format(username, pwd, host, port, params["name"])
     else:
         raise NotImplementedError("There is no current support for {}".format(dbtype))
     engine = create_engine(dbstring)
@@ -136,7 +133,7 @@ def mart_download(mart, fields, common, error="ignore"):
                annots)
     elif len(annots)==1:
         annots_merged=annots.copy()
-    elif len(annots)==0:
+    else:
         raise ValueError("Could not download any annotations please check your connection")
 
     return annots_merged
