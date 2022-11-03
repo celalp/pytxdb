@@ -10,6 +10,6 @@ setup(
     install_requires=["pandas", "pyranges", "pysam", "biopython", "sqlalchemy", "numpy", "pybiomart",
                       "mysql-connector-python", "mariadb", "psycopg2", "python-dotenv"],
     zip_safe=False,
-    scripts=["pytxdb/scripts/pytxdb.py"],
+    scripts=["pytxdb/scripts/pytxdb_create.py"],
     include_package_data=True
 )

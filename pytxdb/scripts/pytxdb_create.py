@@ -1,4 +1,4 @@
-#! python3.9
+#! python3
 from dotenv import dotenv_values
 import argparse as arg
 import os
@@ -9,7 +9,7 @@ import pybiomart as biomart
 import pyranges
 import yaml
 
-import pytxdb.utils as utils
+from pytxdb import utils
 from pytxdb.database import *
 
 
