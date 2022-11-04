@@ -109,6 +109,8 @@ if __name__ == "__main__":
     # this is different because there are no "introns" in the gtf we need to infer them from the locations of exons
     introns = gtf.features.introns(by="transcript")
     if len(introns) > 0:
+        introns["start"]=introns["start"]+1 #this is a quirk of pyranges it does not bother and takes the last nucleotide of the exon
+        # this is different from the behavior of STAR's SJ.out.tab
         introns = introns.df.loc[:, ["Start", "End", "transcript_id"]]
         introns = introns.rename(columns={"Start": "start", "End": "end", "transcript_id": "transcript"})
         introns.to_sql("introns", engine, if_exists="append", index=False)

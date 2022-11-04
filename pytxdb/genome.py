@@ -6,7 +6,7 @@ import pysam
 import sqlalchemy as sql
 from Bio.Seq import Seq
 from sqlalchemy.orm import Session
-from utils import check_results
+from pytxdb.utils import check_results
 
 #TODO need to refactor and account for the gene moved gene and transcript annotations
 #TODO need to be able to handle non file sequences but how?
@@ -20,10 +20,11 @@ class Genome:
         :param mart pybiomart connection optional
         """
         self.db = db
-        if not os.path.isfile(fasta) and fasta is not None:
-            raise FileNotFoundError("{} does not exist".format(fasta))
-        else:
-            self.fasta = pysam.Fastafile(fasta)
+        if fasta is not None:
+            if not os.path.isfile(fasta):
+                raise FileNotFoundError("{} does not exist".format(fasta))
+            else:
+                self.fasta = pysam.Fastafile(fasta)
         self.mart = mart
         self.session = Session(self.db)
         self.metadata = sql.MetaData(self.db)
