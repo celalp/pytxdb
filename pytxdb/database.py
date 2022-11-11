@@ -1,5 +1,5 @@
-from sqlalchemy import Table, Column, ForeignKey, Integer, String, JSON, MetaData
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy import Column, ForeignKey, Integer, String, JSON
+from sqlalchemy.orm import declarative_base
 
 
 GenomeBase = declarative_base()
@@ -43,7 +43,7 @@ class CDS(GenomeBase):
     __tablename__ = "cdss"
     id = Column(Integer, primary_key=True, index=True)
     transcript = Column(String(), ForeignKey("transcripts.id"), index=True)
-    exon_rank = Column(String(), ForeignKey("exons.id"))
+    exon_rank = Column(Integer)
     start = Column(Integer)
     end = Column(Integer)
 

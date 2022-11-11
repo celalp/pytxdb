@@ -1,6 +1,6 @@
 
 output:
-  name: mygenome.db
+  name: test.db
   type: sqlite
   env: .env
 

@@ -4,12 +4,14 @@ from sqlalchemy import Table, Column, Float, ForeignKey, Boolean, Date, \
 import pandas as pd
 from functools import reduce
 
+from pyranges.pyranges import PyRanges
+
 
 
 def check_results(res):
     if len(res) == 0:
         raise ValueError("Did not find any features with those names, "
-                         "plasae check the names you provided")
+                         "please check the names you provided")
     else:
         return res
 
@@ -137,6 +139,32 @@ def mart_download(mart, fields, common, error="ignore"):
         raise ValueError("Could not download any annotations please check your connection")
 
     return annots_merged
+
+#TODO this will superclass pyranges and add couple of methods to it
+class GRanges(PyRanges):
+    def __init__(self, df=None, chromosomes=None,
+                 starts=None, ends=None, strands=None):
+        super().__init__(df, chromosomes=chromosomes,
+                         starts=starts, ends=ends,
+                         strands=strands)
+
+    def slice(self, start, end):
+        """
+        row slice ala dataframe
+        :param start: start location (not in genomic location but in row location)
+        :type start: int
+        :param end: end location
+        :type end: int
+        :param in_place: whether to modify in place
+        :type in_place: bool
+        :return: sliced version of the GRanges instance
+        :rtype: GRanges
+        """
+        df=self.df
+        df=df.iloc[start:end, :]
+        new_gr=GRanges(df=df)
+        return new_gr
+
 
 
 

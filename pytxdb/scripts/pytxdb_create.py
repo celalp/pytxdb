@@ -12,6 +12,8 @@ import yaml
 from pytxdb import utils
 from pytxdb.database import *
 
+from sqlalchemy import MetaData
+
 
 if __name__ == "__main__":
     parser = arg.ArgumentParser(description='create a txdb-esque database, currently only creates a sqlite database')
@@ -92,6 +94,7 @@ if __name__ == "__main__":
         cdss = cdss.df.loc[:, ["Start", "End", "transcript_id", "exon_number"]]
         cdss = cdss.rename(columns={"Start": "start", "End": "end", "transcript_id": "transcript",
                                     "exon_number": "exon_rank"})
+        cdss = cdss.astype({"exon_rank": int})
         cdss.to_sql("cdss", engine, if_exists="append", index=False)
 
     three_utr = gtf[(gtf.Feature == "three_prime_utr")]
@@ -109,9 +112,10 @@ if __name__ == "__main__":
     # this is different because there are no "introns" in the gtf we need to infer them from the locations of exons
     introns = gtf.features.introns(by="transcript")
     if len(introns) > 0:
-        introns["start"]=introns["start"]+1 #this is a quirk of pyranges it does not bother and takes the last nucleotide of the exon
-        # this is different from the behavior of STAR's SJ.out.tab
         introns = introns.df.loc[:, ["Start", "End", "transcript_id"]]
+        # this is a quirk of pyranges it does not bother and takes the last nucleotide of the exon
+        # this is different from the behavior of STAR's SJ.out.tab
+        introns["Start"] = introns["Start"] + 1
         introns = introns.rename(columns={"Start": "start", "End": "end", "transcript_id": "transcript"})
         introns.to_sql("introns", engine, if_exists="append", index=False)
 

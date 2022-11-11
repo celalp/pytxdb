@@ -1,15 +1,11 @@
 import os
 import numpy as np
 import pandas as pd
-import pyranges
 import pysam
 import sqlalchemy as sql
 from Bio.Seq import Seq
 from sqlalchemy.orm import Session
-from pytxdb.utils import check_results
-
-#TODO need to refactor and account for the gene moved gene and transcript annotations
-#TODO need to be able to handle non file sequences but how?
+from pytxdb.utils import check_results, GRanges
 
 class Genome:
     def __init__(self, db, fasta=None, mart=None):
@@ -30,7 +26,7 @@ class Genome:
         self.metadata = sql.MetaData(self.db)
         self.metadata.reflect(bind=self.db)
 
-    def search(self, term, where=None, regex=False, return_fields=False, gene=True):
+    def search(self, term=None, where=None, regex=False, return_fields=False, gene=True):
         """
         searches for ensembl id based on some information like gene name can use regexes
         :param term: what to search for
@@ -40,19 +36,21 @@ class Genome:
         :return: returns a list of strings (ens ids)
         """
         if gene:
-            annots_table = sql.Table("gene_annotations", self.metadata, autoload=True, autoload_with=self.db)
+            annot_table = sql.Table("gene_annotations", self.metadata, autoload=True, autoload_with=self.db)
+            id="ensembl_gene_id"
         else:
-            annots_table = sql.Table("gene_annotations", self.metadata, autoload=True, autoload_with=self.db)
+            annot_table = sql.Table("transcript_annotations", self.metadata, autoload=True, autoload_with=self.db)
+            id = "ensembl_transcript_id"
 
         if return_fields:
-            print("Available fields are: {}".format(",".join(annots_table.columns.keys())))
+            print("Available fields are: {}".format(",".join(annot_table.columns.keys())))
         else:
 
-            query=sql.select(annots_table)
+            query=sql.select(annot_table)
             annots_table=self.session.execute(query).fetchall()
-            annots=pd.DataFrame(annots)
+            annots=pd.DataFrame(annots_table)
 
-            annots.columns=self.session.execute(query).keys()
+            annots.columns=[desc["name"] for desc in query.column_descriptions]
 
             mask_array = np.zeros_like(annots, dtype=bool)
             if where is None:
@@ -62,10 +60,10 @@ class Genome:
                 mask = np.sum(mask_array, axis=1) > 0
 
             else:
-                mask = merged[where].str.contains(term, case=False, regex=regex, na=False)
+                mask = annots[where].str.contains(term, case=False, regex=regex, na=False)
 
-            genes = merged["id"][mask].drop_duplicates()
-            return genes
+            results = annots[id][mask].drop_duplicates()
+            return results.to_list()
 
     def genes(self, names=None, df=False, add_annotations=False):
         """
@@ -80,17 +78,17 @@ class Genome:
         if names is None:
             query = sql.select(table)
         else:
-            query = sql.select(table).where(table.c.id.in_(names))
+            query = sql.select(table).filter(table.c.id.in_(names))
 
         if add_annotations:
             annot_table=sql.Table("gene_annotations", self.metadata,
                                   autoload=True, autoload_with=self.db)
-            query.join(annot_table, table.c.id == annot_table.c.ensembl_gene_id).\
-                add_columns(annot_table)
+            query=query.join(annot_table, table.c.id == annot_table.c.ensembl_gene_id).\
+                add_columns(*[annot_table.c[col] for col in annot_table.columns.keys()])
 
         results = check_results(self.session.execute(query).fetchall())
 
-        columns = list(self.session.execute(query).keys())
+        columns = [desc["name"] for desc in query.column_descriptions]
 
         dat = pd.DataFrame(results)
         dat.columns = columns
@@ -98,14 +96,14 @@ class Genome:
         if df:
             return dat
         else:
-            gr = pyranges.pyranges.PyRanges(chromosomes=dat.iloc[:, 1],
+            gr = GRanges(chromosomes=dat.iloc[:, 1],
                                             starts=dat.iloc[:, 2],
                                             ends=dat.iloc[:, 3],
                                             strands=dat.iloc[:, 4])
             gr.id = dat["id"]
             return gr
 
-    def transcripts(self, names=None, df=False, add_annotations=False):
+    def transcripts(self, names=None, gene_names=None, df=False, add_annotations=False):
         """
         return transcripts
         :param names: list of ens ids if none everything, this needs to be an iterable even if
@@ -123,25 +121,28 @@ class Genome:
             join(subq, tx_table.c.gene == subq.c.id)
 
         if names is not None:
-            query = query.where(tx_table.c.id.in_(names))
+            query = query.filter(tx_table.c.id.in_(names))
+
+        if gene_names is not None:
+            query = query.filter(tx_table.c.gene.in_(gene_names))
 
         if add_annotations:
             annot_table=sql.Table("transcript_annotations", self.metadata,
                                   autoload=True, autoload_with=self.db)
-            query.join(annot_table, tx_table.c.id == annot_table.c.ensembl_transcript_id).\
-                add_columns(annot_table)
+            query=query.join(annot_table, tx_table.c.id == annot_table.c.ensembl_transcript_id).\
+                add_columns(*[annot_table.c[col] for col in annot_table.columns.keys()])
 
         results = check_results(self.session.execute(query).fetchall())
         dat = pd.DataFrame(results)
-        dat.columns = list(self.session.execute(query).keys())
+        dat.columns = [desc["name"] for desc in query.column_descriptions]
 
         if df:
             return dat
         else:
-            gr = pyranges.pyranges.PyRanges(chromosomes=dat.iloc[:, 6],
+            gr = GRanges(chromosomes=dat.iloc[:, 5],
                                             starts=dat.iloc[:, 2],
                                             ends=dat.iloc[:, 3],
-                                            strands=dat.iloc[:, 7])
+                                            strands=dat.iloc[:, 6])
             gr.tx_id = dat.id
             return gr
 
@@ -174,13 +175,13 @@ class Genome:
 
         results = check_results(self.session.execute(query).fetchall())
         dat = pd.DataFrame(results)
-        dat.columns = list(self.session.execute(query).keys())
+        dat.columns =[desc["name"] for desc in query.column_descriptions]
         dat = dat.drop(columns="id")
 
         if df:
             return dat
         else:
-            gr = pyranges.pyranges.PyRanges(chromosomes=dat.iloc[:, 6],
+            gr = GRanges(chromosomes=dat.iloc[:, 6],
                                             starts=dat.iloc[:, 2],
                                             ends=dat.iloc[:, 3],
                                             strands=dat.iloc[:, 7])
@@ -222,16 +223,16 @@ class Genome:
 
         results = check_results(self.session.execute(query).fetchall())
         dat = pd.DataFrame(results)
-        dat.columns = list(self.session.execute(query).keys())
-        dat = dat.drop(columns=["id", "exon_name"])
+        dat.columns = [desc["name"] for desc in query.column_descriptions]
+        dat = dat.drop(columns=["id"])
 
         if df:
             return dat
         else:
-            gr = pyranges.pyranges.PyRanges(chromosomes=dat.iloc[:, 5],
-                                            starts=dat.iloc[:, 2],
-                                            ends=dat.iloc[:, 3],
-                                            strands=dat.iloc[:, 6])
+            gr = GRanges(chromosomes=dat.iloc[:, 4],
+                                            starts=dat.iloc[:, 1],
+                                            ends=dat.iloc[:, 2],
+                                            strands=dat.iloc[:, 5])
             if additional_features:
                 gr.tx_id = dat.transcript
                 gr.gene_id = dat.gene
@@ -268,13 +269,13 @@ class Genome:
 
         results = self.session.execute(query).fetchall()
         dat = pd.DataFrame(results)
-        dat.columns = list(self.session.execute(query).keys())
+        dat.columns = [desc["name"] for desc in query.column_descriptions]
         dat = dat.drop(columns="id")
 
         if df:
             return dat
         else:
-            gr = pyranges.pyranges.PyRanges(chromosomes=dat.iloc[:, 4],
+            gr = GRanges(chromosomes=dat.iloc[:, 4],
                                             starts=dat.iloc[:, 1],
                                             ends=dat.iloc[:, 2],
                                             strands=dat.iloc[:, 5])
@@ -311,12 +312,12 @@ class Genome:
 
         results = self.session.execute(query).fetchall()
         dat = pd.DataFrame(results)
-        dat.columns = list(self.session.execute(query).keys())
+        dat.columns = [desc["name"] for desc in query.column_descriptions]
 
         if df:
             return dat
         else:
-            gr = pyranges.pyranges.PyRanges(chromosomes=dat.iloc[:, 5],
+            gr = GRanges(chromosomes=dat.iloc[:, 5],
                                             starts=dat.iloc[:, 2],
                                             ends=dat.iloc[:, 3],
                                             strands=dat.iloc[:, 6])
@@ -354,12 +355,12 @@ class Genome:
 
         results = self.session.execute(query).fetchall()
         dat = pd.DataFrame(results)
-        dat.columns = list(self.session.execute(query).keys())
+        dat.columns = [desc["name"] for desc in query.column_descriptions]
 
         if df:
             return dat
         else:
-            gr = pyranges.pyranges.PyRanges(chromosomes=dat.iloc[:, 5],
+            gr = GRanges(chromosomes=dat.iloc[:, 5],
                                             starts=dat.iloc[:, 2],
                                             ends=dat.iloc[:, 3],
                                             strands=dat.iloc[:, 6])
@@ -435,7 +436,7 @@ class Genome:
 
         # pranges returns strand specific
         coding_regions = self.cds(names=[tx], level="transcript", df=False)
-        coding_regions.exon_rank = [float(rank) for rank in coding_regions.exon_rank]
+        coding_regions.exon_rank = [int(rank) for rank in coding_regions.exon_rank]
         coding_regions.len = coding_regions.End - coding_regions.Start
 
         strand = coding_regions.Strand.unique()[0]
