@@ -4,7 +4,7 @@ from sqlalchemy import Table, Column, Float, ForeignKey, Boolean, Date, \
 import pandas as pd
 from functools import reduce
 
-from pyranges.pyranges import PyRanges
+from pyranges.pyranges import PyRanges, fill_kwargs, pyrange_apply_single
 
 
 
@@ -160,10 +160,23 @@ class GRanges(PyRanges):
         :return: sliced version of the GRanges instance
         :rtype: GRanges
         """
-        df=self.df
+        df=self.as_df()
         df=df.iloc[start:end, :]
         new_gr=GRanges(df=df)
         return new_gr
+
+    def copy(self):
+        pr = self.apply(lambda df: df.copy(deep=True))
+        return GRanges(pr.as_df())
+
+    def nearest(self, other, **kwargs):
+        pr=super().nearest(other, **kwargs)
+        if len(pr)==0:
+            return None
+        else:
+            return GRanges(pr.as_df())
+
+
 
 
 

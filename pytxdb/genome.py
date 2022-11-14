@@ -6,6 +6,7 @@ import sqlalchemy as sql
 from Bio.Seq import Seq
 from sqlalchemy.orm import Session
 from pytxdb.utils import check_results, GRanges
+import math
 
 class Genome:
     def __init__(self, db, fasta=None, mart=None):
@@ -96,11 +97,9 @@ class Genome:
         if df:
             return dat
         else:
-            gr = GRanges(chromosomes=dat.iloc[:, 1],
-                                            starts=dat.iloc[:, 2],
-                                            ends=dat.iloc[:, 3],
-                                            strands=dat.iloc[:, 4])
-            gr.id = dat["id"]
+            dat = dat[["chrom", "start", "end", "strand", "id"]]
+            dat = dat.rename(columns={"start": "Start", "end": "End", "chrom": "Chromosome", "strand": "Strand"})
+            gr=GRanges(dat)
             return gr
 
     def transcripts(self, names=None, gene_names=None, df=False, add_annotations=False):
@@ -115,10 +114,9 @@ class Genome:
         tx_table = sql.Table("transcripts", self.metadata, autoload=True, autoload_with=self.db)
         gene_table = sql.Table("genes", self.metadata, autoload=True, autoload_with=self.db)
         # need to get chrom and strand
-        subq = sql.select(gene_table.c.id, gene_table.c.chrom, gene_table.c.strand).subquery()
 
-        query = sql.select(tx_table, subq.c.chrom, subq.c.strand). \
-            join(subq, tx_table.c.gene == subq.c.id)
+        query = sql.select(tx_table).join(gene_table, tx_table.c.gene == gene_table.c.id).\
+            add_columns(gene_table.c.chrom, gene_table.c.strand)
 
         if names is not None:
             query = query.filter(tx_table.c.id.in_(names))
@@ -139,11 +137,10 @@ class Genome:
         if df:
             return dat
         else:
-            gr = GRanges(chromosomes=dat.iloc[:, 5],
-                                            starts=dat.iloc[:, 2],
-                                            ends=dat.iloc[:, 3],
-                                            strands=dat.iloc[:, 6])
-            gr.tx_id = dat.id
+            dat=dat[["chrom", "start", "end", "strand", "id"]]
+            dat=dat.rename(columns={"start": "Start", "end": "End", "chrom":"Chromosome", "strand":"Strand"})
+            gr = GRanges(df=dat)
+
             return gr
 
     def exons(self, names=None, level="transcript", df=False, additional_features=True):
@@ -181,10 +178,9 @@ class Genome:
         if df:
             return dat
         else:
-            gr = GRanges(chromosomes=dat.iloc[:, 6],
-                                            starts=dat.iloc[:, 2],
-                                            ends=dat.iloc[:, 3],
-                                            strands=dat.iloc[:, 7])
+            gr = dat[["chrom", "start", "end", "strand"]]
+            gr = gr.rename(columns={"start": "Start", "end": "End", "chrom": "Chromosome", "strand": "Strand"})
+            gr = GRanges(df=gr)
             if additional_features:
                 gr.tx_id = dat.transcript
                 gr.gene_id = dat.gene
@@ -229,10 +225,9 @@ class Genome:
         if df:
             return dat
         else:
-            gr = GRanges(chromosomes=dat.iloc[:, 4],
-                                            starts=dat.iloc[:, 1],
-                                            ends=dat.iloc[:, 2],
-                                            strands=dat.iloc[:, 5])
+            gr = dat[["chrom", "start", "end", "strand"]]
+            gr = gr.rename(columns={"start": "Start", "end": "End", "chrom": "Chromosome", "strand": "Strand"})
+            gr = GRanges(df=gr)
             if additional_features:
                 gr.tx_id = dat.transcript
                 gr.gene_id = dat.gene
@@ -275,10 +270,9 @@ class Genome:
         if df:
             return dat
         else:
-            gr = GRanges(chromosomes=dat.iloc[:, 4],
-                                            starts=dat.iloc[:, 1],
-                                            ends=dat.iloc[:, 2],
-                                            strands=dat.iloc[:, 5])
+            gr = dat[["chrom", "start", "end", "strand"]]
+            gr = gr.rename(columns={"start": "Start", "end": "End", "chrom": "Chromosome", "strand": "Strand"})
+            gr = GRanges(df=gr)
             if additional_features:
                 gr.tx_id = dat.transcript
                 gr.gene_id = dat.gene
@@ -317,10 +311,9 @@ class Genome:
         if df:
             return dat
         else:
-            gr = GRanges(chromosomes=dat.iloc[:, 5],
-                                            starts=dat.iloc[:, 2],
-                                            ends=dat.iloc[:, 3],
-                                            strands=dat.iloc[:, 6])
+            gr = dat[["chrom", "start", "end", "strand"]]
+            gr = gr.rename(columns={"start": "Start", "end": "End", "chrom": "Chromosome", "strand": "Strand"})
+            gr = GRanges(df=gr)
             if additional_features:
                 gr.tx_id = dat.transcript
                 gr.gene_id = dat.gene
@@ -360,10 +353,9 @@ class Genome:
         if df:
             return dat
         else:
-            gr = GRanges(chromosomes=dat.iloc[:, 5],
-                                            starts=dat.iloc[:, 2],
-                                            ends=dat.iloc[:, 3],
-                                            strands=dat.iloc[:, 6])
+            gr = dat[["chrom", "start", "end", "strand"]]
+            gr = gr.rename(columns={"start": "Start", "end": "End", "chrom": "Chromosome", "strand": "Strand"})
+            gr = GRanges(df=gr)
             if additional_features:
                 gr.tx_id = dat.transcript
                 gr.gene_id = dat.gene
@@ -436,7 +428,6 @@ class Genome:
 
         # pranges returns strand specific
         coding_regions = self.cds(names=[tx], level="transcript", df=False)
-        coding_regions.exon_rank = [int(rank) for rank in coding_regions.exon_rank]
         coding_regions.len = coding_regions.End - coding_regions.Start
 
         strand = coding_regions.Strand.unique()[0]
@@ -568,4 +559,6 @@ class Genome:
 
         if not quiet and message is not None:
             print(message)
+        start_aa=math.floor(start_aa)
+        end_aa=math.floor(end_aa)
         return domains, start_aa, end_aa
