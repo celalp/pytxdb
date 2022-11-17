@@ -1,20 +1,35 @@
+import math
 import os
+
 import numpy as np
 import pandas as pd
 import pysam
 import sqlalchemy as sql
 from Bio.Seq import Seq
 from sqlalchemy.orm import Session
+
+from pytxdb.blast import Blast
 from pytxdb.utils import check_results, GRanges
-import math
+
 
 class Genome:
-    def __init__(self, db, fasta=None, mart=None):
+    def __init__(self, db, fasta=None, mart=None, blast=None, dbpath=None, blastdb=None, blast_type="n"):
         """
-        get the database connection, and fasta connection for getting sequences
-        :param db: genome database, this is a connection
-        :param fasta: fasta file for getting sequences optional.
-        :param mart pybiomart connection optional
+        create a genome instance, optionally add fasta, biomart connection and blast exectuables
+        :param db: a database engine connection it can be sqlite, mariadb, postgres or mysql
+        :type db: sql.create engine
+        :param fasta: an unzipped fasta file for fetching sequences
+        :type fasta: str path
+        :param mart: a pybiomart connection
+        :type mart: pybiomart.mart
+        :param blast: a blast class instance
+        :type blast: blast
+        :param dbpath path for the executable if not will check $PATH
+        :type dbpath str
+        :param blastdb: path and name of the blast database if there is none it can be created using blast.create_db
+        :type blastdb: str
+        :param blast_type: type of blast database default nucleotide ("n")
+        :type blast_type: str
         """
         self.db = db
         if fasta is not None:
@@ -26,10 +41,14 @@ class Genome:
         self.session = Session(self.db)
         self.metadata = sql.MetaData(self.db)
         self.metadata.reflect(bind=self.db)
+        if blast is not None:
+            self.blast = Blast(dbtype=blast_type, path=dbpath, db=blastdb)
 
     def search(self, term=None, where=None, regex=False, return_fields=False, gene=True):
         """
         searches for ensembl id based on some information like gene name can use regexes
+        :param return_fields: bool instead of searching just return what fields are available to search
+        :type return_fields: bool
         :param term: what to search for
         :param where: optional search field
         :param regex: is this a regex default False
@@ -38,7 +57,7 @@ class Genome:
         """
         if gene:
             annot_table = sql.Table("gene_annotations", self.metadata, autoload=True, autoload_with=self.db)
-            id="ensembl_gene_id"
+            id = "ensembl_gene_id"
         else:
             annot_table = sql.Table("transcript_annotations", self.metadata, autoload=True, autoload_with=self.db)
             id = "ensembl_transcript_id"
@@ -47,11 +66,11 @@ class Genome:
             print("Available fields are: {}".format(",".join(annot_table.columns.keys())))
         else:
 
-            query=sql.select(annot_table)
-            annots_table=self.session.execute(query).fetchall()
-            annots=pd.DataFrame(annots_table)
+            query = sql.select(annot_table)
+            annots_table = self.session.execute(query).fetchall()
+            annots = pd.DataFrame(annots_table)
 
-            annots.columns=[desc["name"] for desc in query.column_descriptions]
+            annots.columns = [desc["name"] for desc in query.column_descriptions]
 
             mask_array = np.zeros_like(annots, dtype=bool)
             if where is None:
@@ -69,10 +88,11 @@ class Genome:
     def genes(self, names=None, df=False, add_annotations=False):
         """
         get gene coordinates
+        :param add_annotations: whether to add annotations (a left join with the table)
+        :type add_annotations: bool
         :param names: list of ens ids if none everything, this needs to be an iterable even
         if only one thing is requested
         :param df: return a dataframe or pyranges
-        :param additional_features: add additional features to the search results
         :return: returns a dataframe or pyranges object
         """
         table = sql.Table("genes", self.metadata, autoload=True, autoload_with=self.db)
@@ -82,9 +102,9 @@ class Genome:
             query = sql.select(table).filter(table.c.id.in_(names))
 
         if add_annotations:
-            annot_table=sql.Table("gene_annotations", self.metadata,
-                                  autoload=True, autoload_with=self.db)
-            query=query.join(annot_table, table.c.id == annot_table.c.ensembl_gene_id).\
+            annot_table = sql.Table("gene_annotations", self.metadata,
+                                    autoload=True, autoload_with=self.db)
+            query = query.join(annot_table, table.c.id == annot_table.c.ensembl_gene_id). \
                 add_columns(*[annot_table.c[col] for col in annot_table.columns.keys()])
 
         results = check_results(self.session.execute(query).fetchall())
@@ -99,7 +119,7 @@ class Genome:
         else:
             dat = dat[["chrom", "start", "end", "strand", "id"]]
             dat = dat.rename(columns={"start": "Start", "end": "End", "chrom": "Chromosome", "strand": "Strand"})
-            gr=GRanges(dat)
+            gr = GRanges(dat)
             return gr
 
     def transcripts(self, names=None, gene_names=None, df=False, add_annotations=False):
@@ -113,9 +133,8 @@ class Genome:
         """
         tx_table = sql.Table("transcripts", self.metadata, autoload=True, autoload_with=self.db)
         gene_table = sql.Table("genes", self.metadata, autoload=True, autoload_with=self.db)
-        # need to get chrom and strand
 
-        query = sql.select(tx_table).join(gene_table, tx_table.c.gene == gene_table.c.id).\
+        query = sql.select(tx_table).join(gene_table, tx_table.c.gene == gene_table.c.id). \
             add_columns(gene_table.c.chrom, gene_table.c.strand)
 
         if names is not None:
@@ -125,9 +144,9 @@ class Genome:
             query = query.filter(tx_table.c.gene.in_(gene_names))
 
         if add_annotations:
-            annot_table=sql.Table("transcript_annotations", self.metadata,
-                                  autoload=True, autoload_with=self.db)
-            query=query.join(annot_table, tx_table.c.id == annot_table.c.ensembl_transcript_id).\
+            annot_table = sql.Table("transcript_annotations", self.metadata,
+                                    autoload=True, autoload_with=self.db)
+            query = query.join(annot_table, tx_table.c.id == annot_table.c.ensembl_transcript_id). \
                 add_columns(*[annot_table.c[col] for col in annot_table.columns.keys()])
 
         results = check_results(self.session.execute(query).fetchall())
@@ -137,8 +156,8 @@ class Genome:
         if df:
             return dat
         else:
-            dat=dat[["chrom", "start", "end", "strand", "id"]]
-            dat=dat.rename(columns={"start": "Start", "end": "End", "chrom":"Chromosome", "strand":"Strand"})
+            dat = dat[["chrom", "start", "end", "strand", "id"]]
+            dat = dat.rename(columns={"start": "Start", "end": "End", "chrom": "Chromosome", "strand": "Strand"})
             gr = GRanges(df=dat)
 
             return gr
@@ -146,7 +165,7 @@ class Genome:
     def exons(self, names=None, level="transcript", df=False, additional_features=True):
         """
         return exons
-        :param names names of transcripts (or genes)
+        :param names: names of transcripts (or genes)
         :param level for names either "gene" or "transcript"
         :param df: return a df?
         :param additional_features: add additional features to the search results
@@ -172,7 +191,7 @@ class Genome:
 
         results = check_results(self.session.execute(query).fetchall())
         dat = pd.DataFrame(results)
-        dat.columns =[desc["name"] for desc in query.column_descriptions]
+        dat.columns = [desc["name"] for desc in query.column_descriptions]
         dat = dat.drop(columns="id")
 
         if df:
@@ -281,6 +300,8 @@ class Genome:
     def three_utr(self, names=None, df=False, level="gene", additional_features=True):
         """
         same as exons
+        :param level:
+        :type level:
         :param names:
         :param df:
         :return:
@@ -445,17 +466,17 @@ class Genome:
         gr_end.Start = gr.End
 
         closest_start = gr_start.nearest(coding_regions)
-        #intialize variables here and they will be overwritten later
-        message=None
-        start_aa=None
-        end_aa=None
-        domains=None
+        # intialize variables here and they will be overwritten later
+        message = None
+        start_aa = None
+        end_aa = None
+        domains = None
 
         if int(closest_start.End_b) - int(gr.Start) <= 0:  # 3' of the closest cds need to get the next one
             if strand == "+":
                 start_exon_rank = int(closest_start.exon_rank) + 1  # get the next one 3' of the exon
                 if start_exon_rank > coding_regions.exon_rank.max():  # start at 3' utr so no protein
-                    message="gr starts at a 3' utr there is no protein sequence overlap"
+                    message = "gr starts at a 3' utr there is no protein sequence overlap"
                     domains = None
                     start_aa = 0
                     end_aa = 0
@@ -464,7 +485,7 @@ class Genome:
             else:
                 start_exon_rank = int(closest_start.exon_rank) - 1  # because exon rank decreases as we go 3'
                 if start_exon_rank < coding_regions.exon_rank.min():  # start at 5' utr so no protein
-                    message="gr ends at a 5' utr there is no protein sequence overlap"
+                    message = "gr ends at a 5' utr there is no protein sequence overlap"
                     domains = None
                     start_aa = 0
                     end_aa = 0
@@ -484,7 +505,7 @@ class Genome:
             if strand == "+":
                 end_exon_rank = int(closest_end.exon_rank) - 1
                 if end_exon_rank < coding_regions.exon_rank.min():  # end at 5' utr so no protein
-                    message="gr ends at a 5' utr there is no protein sequence overlap"
+                    message = "gr ends at a 5' utr there is no protein sequence overlap"
                     domains = None
                     start_aa = 0
                     end_aa = 0
@@ -493,7 +514,7 @@ class Genome:
             else:
                 end_exon_rank = int(closest_end.exon_rank) + 1
                 if end_exon_rank > coding_regions.exon_rank.max():  # end at 5' utr so no protein
-                    message="gr ends at a 5' utr there is no protein sequence overlap"
+                    message = "gr ends at a 5' utr there is no protein sequence overlap"
                     domains = None
                     start_aa = 0
                     end_aa = 0
@@ -506,7 +527,7 @@ class Genome:
             end_exon_rank = int(closest_end.exon_rank)
             end_location = int(gr.End)
 
-        if start_aa==0 and end_aa==0 and domains is None:
+        if start_aa == 0 and end_aa == 0 and domains is None:
             if not quiet:
                 print(message)
             return domains, start_aa, end_aa
@@ -527,15 +548,15 @@ class Genome:
 
         # edge case, if they are in the same intron
         if (start_aa > end_aa) and (start_exon_rank == end_exon_rank):
-            message="No affected domains found for {}".format(tx)
-            domains=None
+            message = "No affected domains found for {}".format(tx)
+            domains = None
         else:
             columns = [feature_name, feature_name + "_start", feature_name + "_end"]
             domains = self.mart.query(attributes=columns,
                                       filters={"link_ensembl_transcript_stable_id": tx})
             if pd.isnull(domains.iloc[0, 0]):
-                message="No domains found with {} in {}".format(feature_name, tx)
-                domains=None
+                message = "No domains found with {} in {}".format(feature_name, tx)
+                domains = None
             else:
                 domains = domains.sort_values(by=domains.columns[1])
                 starts = domains.iloc[:, 1].to_list()
@@ -552,13 +573,13 @@ class Genome:
                     end = max([interval.right for interval in overlaps])
                     start_idx = domains.index[domains.iloc[:, 1] == start]
                     end_idx = domains.index[domains.iloc[:, 2] == end] + 1
-                    domains= domains.iloc[start_idx[0]:end_idx[0], :]
+                    domains = domains.iloc[start_idx[0]:end_idx[0], :]
                 else:
-                    message="No affected domains found for {}".format(tx)
-                    domains=None
+                    message = "No affected domains found for {}".format(tx)
+                    domains = None
 
         if not quiet and message is not None:
             print(message)
-        start_aa=math.floor(start_aa)
-        end_aa=math.floor(end_aa)
+        start_aa = math.floor(start_aa)
+        end_aa = math.floor(end_aa)
         return domains, start_aa, end_aa

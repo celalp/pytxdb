@@ -1,0 +1,11 @@
+pandas
+pyranges
+pysam
+biopython
+sqlalchemy
+numpy
+pybiomart
+mysql-connector-python
+mariadb
+psycopg2-binary
+python-dotenv
