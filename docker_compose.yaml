@@ -36,3 +36,8 @@ services:
     networks:
       - main
     restart: unless-stopped
+
+
+networks:
+  main:
+    name: pytxdb_test
