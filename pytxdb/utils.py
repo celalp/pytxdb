@@ -4,7 +4,9 @@ from sqlalchemy import Table, Column, Float, ForeignKey, Boolean, Date, \
 import pandas as pd
 from functools import reduce
 
-from pyranges.pyranges import PyRanges, fill_kwargs, pyrange_apply_single
+from pyranges.pyranges import PyRanges
+
+import requests, sys
 
 
 
@@ -101,7 +103,7 @@ def dict_to_engine(params, username=None, pwd=None, host=None, port=None):
     return engine
 
 
-def mart_download(mart, fields, common, filters, error="ignore"):
+def mart_download(mart, fields, common, error="ignore"):
     """
     given a list of annotation types download them from ensembl one by one
     :param mart: biomart dataset connection
@@ -120,8 +122,7 @@ def mart_download(mart, fields, common, filters, error="ignore"):
         else:
             cols = [common, annot]
             try:
-                res = mart.query(attributes=[common, annot],
-                                 filters=filters)
+                res = mart.query(attributes=[common, annot])
                 res.columns = cols
                 annots.append(res)
             except:

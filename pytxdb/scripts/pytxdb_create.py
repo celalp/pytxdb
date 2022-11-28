@@ -124,18 +124,19 @@ if __name__ == "__main__":
     if "gene_annotations" in params.keys():
         print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Adding gene annotations from ensembl")
         gene_annotations = params["gene_annotations"]
-        filters={"gene_id":[genes["id"].values.tolist()]} #get the current gene ids that we have from the gtf
-        # this might break if ensembl decides to change their naming schema, but unlikely
-        gene_annots = utils.mart_download(dataset, gene_annotations.keys(), filters=filters,
+        gene_annots = utils.mart_download(dataset, gene_annotations.keys(),
                                           common="ensembl_gene_id", error=params["error"])
-        gene_annots.to_sql("gene_annotations", engine, index=False, if_exists="append")
+        gene_names=genes.gene_id.values.tolist()
+        filtered=filtered=gene_annots.isin({"ensembl_gene_id":gene_names})
+        filtered.to_sql("gene_annotations", engine, index=False, if_exists="append")
 
     if "transcript_annotations" in params.keys():
         print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Adding transcript from ensembl")
         tx_annotations = params["transcript_annotations"]
-        filters={"transcript_id":[txs["id"].values.tolist()]}
-        tx_annots = utils.mart_download(dataset, tx_annotations.keys(), filters=filters,
+        tx_annots = utils.mart_download(dataset, tx_annotations.keys(),
                                         common="ensembl_transcript_id", error=params["error"])
-        tx_annots.to_sql("transcript_annotations", engine, index=False, if_exists="append")
+        tx_names = txs.id.values.tolist()
+        filtered = tx_annots.isin({"ensembl_transcript_id": tx_names})
+        filtered.to_sql("transcript_annotations", engine, index=False, if_exists="append")
 
     print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Done")
