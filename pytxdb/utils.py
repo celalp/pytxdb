@@ -144,7 +144,8 @@ def mart_download(mart, fields, common, filters, error="ignore"):
     return annots_merged
 
 def get_methods(class_instance):
-    method_list = [attribute for attribute in dir(class_instance) if callable(getattr(class_instance, attribute))]
+    method_list = [attribute for attribute in dir(class_instance) if callable(getattr(class_instance, attribute))
+                   and attribute.startswith('__') is False]
     return method_list
 
 #TODO test some of the used methods in the class methods, expecially the print methods since all the
