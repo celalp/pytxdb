@@ -4,7 +4,9 @@ from sqlalchemy import Table, Column, Float, ForeignKey, Boolean, Date, \
 import pandas as pd
 from functools import reduce
 
-from pyranges.pyranges import PyRanges, fill_kwargs, pyrange_apply_single
+from pyranges.pyranges import PyRanges
+
+import requests, sys
 
 
 
@@ -109,6 +111,8 @@ def mart_download(mart, fields, common, error="ignore"):
     :param common: common field like ensembl_gene_id to download with every request and merge
     :param error: what to do if there is an error, "ignore" and continue with the next or
     throw an "error"
+    :param: filters: a dict showing which filters to apply this is to prevent new annotations that
+    are not in the gtf file being downloaded as well.
     :return: a dataframe of annotations
     """
     annots = []
@@ -140,13 +144,24 @@ def mart_download(mart, fields, common, error="ignore"):
 
     return annots_merged
 
-#TODO this will superclass pyranges and add couple of methods to it
+def get_methods(class_instance):
+    method_list = [attribute for attribute in dir(class_instance) if callable(getattr(class_instance, attribute))
+                   and attribute.startswith('__') is False]
+    return method_list
+
+#TODO test some of the used methods in the class methods, expecially the print methods since all the
+# genome functions will return a gr object
 class GRanges(PyRanges):
     def __init__(self, df=None, chromosomes=None,
                  starts=None, ends=None, strands=None):
         super().__init__(df, chromosomes=chromosomes,
                          starts=starts, ends=ends,
                          strands=strands)
+
+        methods=get_methods(super())
+        for method_name in methods:
+            method = getattr(super(), method_name)
+            self.__setattr__(method_name, classmethod(method))
 
     def slice(self, start, end):
         """
@@ -165,16 +180,7 @@ class GRanges(PyRanges):
         new_gr=GRanges(df=df)
         return new_gr
 
-    def copy(self):
-        pr = self.apply(lambda df: df.copy(deep=True))
-        return GRanges(pr.as_df())
 
-    def nearest(self, other, **kwargs):
-        pr=super().nearest(other, **kwargs)
-        if len(pr)==0:
-            return None
-        else:
-            return GRanges(pr.as_df())
 
 
 

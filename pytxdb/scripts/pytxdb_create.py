@@ -126,14 +126,17 @@ if __name__ == "__main__":
         gene_annotations = params["gene_annotations"]
         gene_annots = utils.mart_download(dataset, gene_annotations.keys(),
                                           common="ensembl_gene_id", error=params["error"])
-        gene_annots.to_sql("gene_annotations", engine, index=False, if_exists="append")
+        gene_names=genes.gene_id.values.tolist()
+        filtered=filtered=gene_annots.isin({"ensembl_gene_id":gene_names})
+        filtered.to_sql("gene_annotations", engine, index=False, if_exists="append")
 
     if "transcript_annotations" in params.keys():
         print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Adding transcript from ensembl")
         tx_annotations = params["transcript_annotations"]
         tx_annots = utils.mart_download(dataset, tx_annotations.keys(),
                                         common="ensembl_transcript_id", error=params["error"])
-
-        tx_annots.to_sql("transcript_annotations", engine, index=False, if_exists="append")
+        tx_names = txs.id.values.tolist()
+        filtered = tx_annots.isin({"ensembl_transcript_id": tx_names})
+        filtered.to_sql("transcript_annotations", engine, index=False, if_exists="append")
 
     print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Done")
