@@ -126,7 +126,7 @@ if __name__ == "__main__":
         gene_annotations = params["gene_annotations"]
         gene_annots = utils.mart_download(dataset, gene_annotations.keys(),
                                           common="ensembl_gene_id", error=params["error"])
-        gene_names=genes.gene_id.values.tolist()
+        gene_names=genes.id.values.tolist()
         filtered=filtered=gene_annots.isin({"ensembl_gene_id":gene_names})
         filtered.to_sql("gene_annotations", engine, index=False, if_exists="append")
 
