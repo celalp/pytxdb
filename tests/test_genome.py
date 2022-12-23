@@ -1,7 +1,6 @@
 from Bio.Seq import Seq
 import pytest
 from pytxdb import genome
-from pytxdb import database
 from pyranges import *
 import sys
 from sqlalchemy import create_engine
